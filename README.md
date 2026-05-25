@@ -1,6 +1,6 @@
 # ChatGPT JSON to Markdown
 
-Convert exported ChatGPT conversation JSON files into clean, readable Markdown.
+Convert exported ChatGPT conversation JSON files into clean, readable Markdown. Built for preserving long conversations and carrying context between ChatGPT threads.
 
 This script parses the official ChatGPT conversation export format and reconstructs the visible conversation chain, including:
 
@@ -26,10 +26,33 @@ Perfect for:
 - Includes timestamps
 - Handles attachments
 - UTF-8 safe
-- Handles malformed JSON exports using `strict=False`
-- Optional inclusion of hidden/system/tool messages
+- Supports:
+- - single conversation JSON files
+- - full ChatGPT exports
+- Automatically splits large conversations into chunks
+- Generates an index.md for bulk exports
+- UTF-8 safe
 
 ---
+
+## Why This Exists
+
+This tool was created to preserve long ChatGPT conversations and carry context between threads.
+
+ChatGPT threads eventually become:
+- too long
+- difficult to search
+- unstable to print/export
+- or hit context limits
+
+This script converts exported ChatGPT JSON files into clean Markdown files that can be:
+- uploaded into new ChatGPT threads/project source files 
+- searched locally
+- archived
+- summarized
+- used as continuity/context files
+
+The original goal was simple: Keep long-running conversations and project context portable between threads.
 
 ## Example Output
 
@@ -59,7 +82,7 @@ I’ll pull from the project files now...
 
 ## Usage
 
-Basic usage:
+### Single Conversation JSON:
 
 ```bash
 python3 chatgpt_json_to_md.py conversation.json
@@ -71,18 +94,40 @@ Output:
 conversation.md
 ```
 
-Specify output file:
+Optional - Specify output file:
 
 ```bash
 python3 chatgpt_json_to_md.py conversation.json -o output.md
 ```
 
-Include hidden/system/tool messages:
+Optional - Include hidden/system/tool messages:
 
 ```bash
 python3 chatgpt_json_to_md.py conversation.json --include-tools --include-hidden
 ```
 
+### Full Export: 
+```bash
+python3 chatgpt_export_to_md.py conversations-001.json
+```
+Creates: 
+```
+chatgpt_md_export/
+  index.md
+  thread-name.md
+  giant-thread_part-001.md
+```
+Chunking:
+Large conversations are automatically split into chunks. Default 200 messages per file
+
+Custom chunk size:
+```
+python3 chatgpt_export_to_md.py conversations-001.json --chunk-size 500
+```
+Disable chunking:
+```
+python3 chatgpt_export_to_md.py conversations-001.json --no-chunk
+```
 ---
 
 ## Getting Your ChatGPT JSON
@@ -101,21 +146,3 @@ Extract conversation JSON manually using browser DevTools.
 
 ---
 
-## Why This Exists
-
-This tool was created to preserve long ChatGPT conversations and carry context between threads.
-
-ChatGPT threads eventually become:
-- too long
-- difficult to search
-- unstable to print/export
-- or hit context limits
-
-This script converts exported ChatGPT JSON files into clean Markdown files that can be:
-- uploaded into new ChatGPT threads/project source files 
-- searched locally
-- archived
-- summarized
-- used as continuity/context files
-
-The original goal was simple: Keep long-running conversations and project context portable between threads.
