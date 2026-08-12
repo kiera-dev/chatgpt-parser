@@ -71,6 +71,32 @@ I'll pull from the project files now...
 
 ---
 
+## GUI
+
+If you would rather not use the command line, `gui.py` puts a window around the
+same converters:
+
+```bash
+python3 gui.py
+```
+
+Pick an export file and it works out on its own whether it came from ChatGPT or
+Claude. The **Convert JSON** tab covers everything the parser scripts do (format,
+splitting, tool/hidden/thinking messages); the **Split a file** tab wraps
+`chunker.py` for text files you already have.
+
+The GUI uses tkinter, which is bundled with Python on Windows and macOS. On Linux
+it is sometimes a separate package:
+
+```bash
+sudo apt install python3-tk      # Debian/Ubuntu
+sudo dnf install python3-tkinter # Fedora
+```
+
+The command-line scripts work with or without it.
+
+---
+
 ## ChatGPT Usage
 
 ### Single Conversation JSON:
