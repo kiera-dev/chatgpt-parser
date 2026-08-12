@@ -55,16 +55,16 @@ def split_by_headers(text, level=2):
     return [s.strip() for s in sections if s.strip()]
 
 
-def write_chunks(chunks, input_path, output_dir=None):
+def write_chunks(chunks, input_path, output_dir=None, ext=None):
     base = Path(input_path)
     out = Path(output_dir) if output_dir else base.parent
     out.mkdir(parents=True, exist_ok=True)
 
-    total = len(chunks)
+    suffix = ext or base.suffix
     files_written = []
 
     for i, chunk in enumerate(chunks, start=1):
-        filename = f"{base.stem}_part-{i:03}{base.suffix}"
+        filename = f"{base.stem}_part-{i:03}{suffix}"
         path = out / filename
         path.write_text(chunk, encoding="utf-8")
         files_written.append(path)
@@ -89,6 +89,8 @@ def main():
 
     parser.add_argument("--header-level", type=int, default=2,
                         help="Max heading depth for --split-on-headers (default: 2, meaning # and ##)")
+    parser.add_argument("--format", choices=["txt", "md"],
+                        help="Output file extension (default: same as the input file)")
 
     args = parser.parse_args()
 
@@ -113,7 +115,8 @@ def main():
         print(f"  {total_lines:,} lines  |  {total_chars:,} chars")
         return
 
-    files = write_chunks(chunks, input_path, args.output)
+    files = write_chunks(chunks, input_path, args.output,
+                         ext=f".{args.format}" if args.format else None)
 
     print(f"Split into {len(files)} chunks ({mode})")
     print(f"  {total_lines:,} lines  |  {total_chars:,} chars  →  {input_path.name}")
