@@ -88,7 +88,7 @@ def extract_messages(data, include_tools=False, include_thinking=False):
     return messages
 
 
-def render_markdown(data, messages, start_index=1):
+def render_output(data, messages, start_index=1):
     title = data.get("name", "Untitled Conversation")
     created = ts_to_local(data.get("created_at"))
     updated = ts_to_local(data.get("updated_at"))
@@ -124,13 +124,16 @@ def convert(input_path, output_path, include_tools=False, include_thinking=False
     messages = extract_messages(data, include_tools, include_thinking)
     title = data.get("name", "Untitled Conversation")
     convo_id = data.get("uuid", "unknown-id")
-    base = Path(output_path).with_suffix("")
+
+    output_path = Path(output_path)
+    base = output_path.with_suffix("")
+    ext = output_path.suffix or ".txt"
 
     if chunk_size and len(messages) > chunk_size:
         files_written = []
         for part_num, start in enumerate(range(0, len(messages), chunk_size), start=1):
             chunk = messages[start:start + chunk_size]
-            path = Path(f"{base}_part-{part_num:03}.md")
+            path = Path(f"{base}_part-{part_num:03}{ext}")
 
             header = [
                 f"# {title} — Part {part_num}",
@@ -140,7 +143,7 @@ def convert(input_path, output_path, include_tools=False, include_thinking=False
                 "",
             ]
 
-            body = render_markdown(data, chunk, start_index=start + 1)
+            body = render_output(data, chunk, start_index=start + 1)
             path.write_text("\n".join(header) + "\n" + body, encoding="utf-8")
             files_written.append(path)
 
@@ -149,17 +152,19 @@ def convert(input_path, output_path, include_tools=False, include_thinking=False
             print(f"Wrote: {f}")
         return
 
-    Path(output_path).write_text(render_markdown(data, messages), encoding="utf-8")
+    output_path.write_text(render_output(data, messages), encoding="utf-8")
     print(f"Exported {len(messages)} messages")
     print(f"Wrote: {output_path}")
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Convert a Claude.ai conversation JSON to clean Markdown."
+        description="Convert a Claude.ai conversation JSON to clean text."
     )
     parser.add_argument("input", help="Input Claude conversation JSON file")
-    parser.add_argument("-o", "--output", help="Output Markdown file")
+    parser.add_argument("-o", "--output", help="Output file (extension overrides --format)")
+    parser.add_argument("--format", choices=["txt", "md"], default="txt",
+                        help="Output file extension (default: txt). Content is identical either way.")
     parser.add_argument("--chunk-size", type=int, default=200, help="Messages per chunk for large conversations (default: 200)")
     parser.add_argument("--no-chunk", action="store_true", help="Do not split large conversations")
     parser.add_argument("--include-tools", action="store_true", help="Include tool use/result blocks")
@@ -168,7 +173,7 @@ def main():
     args = parser.parse_args()
 
     input_path = Path(args.input)
-    output_path = args.output or input_path.with_suffix(".md")
+    output_path = Path(args.output) if args.output else input_path.with_suffix(f".{args.format}")
 
     convert(
         input_path=input_path,

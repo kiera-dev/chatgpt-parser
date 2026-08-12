@@ -96,7 +96,7 @@ def extract_messages(convo, include_tools=False, include_thinking=False):
     return messages
 
 
-def render_markdown(convo, messages, start_index=1):
+def render_output(convo, messages, start_index=1):
     title = convo.get("name", "Untitled Conversation")
     created = ts_to_local(convo.get("created_at"))
     updated = ts_to_local(convo.get("updated_at"))
@@ -126,7 +126,7 @@ def render_markdown(convo, messages, start_index=1):
     return "\n".join(lines)
 
 
-def write_conversation(convo, output_dir, chunk_size, include_tools, include_thinking):
+def write_conversation(convo, output_dir, chunk_size, include_tools, include_thinking, ext=".txt"):
     title = convo.get("name", "Untitled Conversation")
     slug = slugify(title)
     convo_id = convo.get("uuid", "unknown-id")
@@ -140,7 +140,7 @@ def write_conversation(convo, output_dir, chunk_size, include_tools, include_thi
         parts = []
         for part_num, start in enumerate(range(0, len(messages), chunk_size), start=1):
             chunk = messages[start:start + chunk_size]
-            filename = f"{slug}_part-{part_num:03}.md"
+            filename = f"{slug}_part-{part_num:03}{ext}"
             path = output_dir / filename
 
             header = [
@@ -151,7 +151,7 @@ def write_conversation(convo, output_dir, chunk_size, include_tools, include_thi
                 "",
             ]
 
-            body = render_markdown(convo, chunk, start_index=start + 1)
+            body = render_output(convo, chunk, start_index=start + 1)
             path.write_text("\n".join(header) + "\n" + body, encoding="utf-8")
             parts.append(filename)
 
@@ -162,9 +162,9 @@ def write_conversation(convo, output_dir, chunk_size, include_tools, include_thi
             "files": parts,
         }
 
-    filename = f"{slug}.md"
+    filename = f"{slug}{ext}"
     path = output_dir / filename
-    path.write_text(render_markdown(convo, messages), encoding="utf-8")
+    path.write_text(render_output(convo, messages), encoding="utf-8")
 
     return {
         "title": title,
@@ -174,7 +174,7 @@ def write_conversation(convo, output_dir, chunk_size, include_tools, include_thi
     }
 
 
-def write_index(output_dir, records):
+def write_index(output_dir, records, ext=".txt"):
     lines = [
         "# Claude Export Index",
         "",
@@ -191,10 +191,10 @@ def write_index(output_dir, records):
             lines.append(f"  - [{file}]({file})")
         lines.append("")
 
-    (output_dir / "index.md").write_text("\n".join(lines), encoding="utf-8")
+    (output_dir / f"index{ext}").write_text("\n".join(lines), encoding="utf-8")
 
 
-def convert(input_path, output=None, chunk_size=None, include_tools=False, include_thinking=False):
+def convert(input_path, output=None, chunk_size=None, include_tools=False, include_thinking=False, ext=".txt"):
     raw = Path(input_path).read_text(encoding="utf-8")
     data = json.loads(raw, strict=False)
 
@@ -204,7 +204,7 @@ def convert(input_path, output=None, chunk_size=None, include_tools=False, inclu
 
     # Bulk export: list of conversations
     if isinstance(data, list):
-        output_dir = Path(output or "claude_md_export")
+        output_dir = Path(output or "claude_text_export")
         output_dir.mkdir(exist_ok=True)
 
         records = []
@@ -215,30 +215,33 @@ def convert(input_path, output=None, chunk_size=None, include_tools=False, inclu
                 chunk_size=chunk_size,
                 include_tools=include_tools,
                 include_thinking=include_thinking,
+                ext=ext,
             )
             if record:
                 records.append(record)
 
-        write_index(output_dir, records)
+        write_index(output_dir, records, ext=ext)
 
         print(f"Done! Exported {len(records)} conversations to {output_dir}/")
-        print(f"Index: {output_dir / 'index.md'}")
+        print(f"Index: {output_dir / ('index' + ext)}")
         return
 
     # Single conversation object
     messages = extract_messages(data, include_tools, include_thinking)
-    output_path = Path(output) if output else Path(input_path).with_suffix(".md")
-    output_path.write_text(render_markdown(data, messages), encoding="utf-8")
+    output_path = Path(output) if output else Path(input_path).with_suffix(ext)
+    output_path.write_text(render_output(data, messages), encoding="utf-8")
 
     print(f"Done! {len(messages)} messages written to {output_path}")
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Convert Claude.ai exported JSON to Markdown."
+        description="Convert a Claude.ai export to text files."
     )
     parser.add_argument("input", help="Input Claude JSON file (single conversation or full export)")
     parser.add_argument("-o", "--output", help="Output file or folder")
+    parser.add_argument("--format", choices=["txt", "md"], default="txt",
+                        help="Output file extension (default: txt). Content is identical either way.")
     parser.add_argument("--chunk-size", type=int, default=200, help="Messages per chunk for large conversations (default: 200)")
     parser.add_argument("--no-chunk", action="store_true", help="Do not split large conversations")
     parser.add_argument("--include-tools", action="store_true", help="Include tool use/result blocks")
@@ -252,6 +255,7 @@ def main():
         chunk_size=None if args.no_chunk else args.chunk_size,
         include_tools=args.include_tools,
         include_thinking=args.include_thinking,
+        ext=f".{args.format}",
     )
 
 
