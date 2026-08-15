@@ -67,7 +67,9 @@ I'll pull from the project files now...
 ## Requirements
 
 - Python 3.9+
-- No external dependencies
+- **Command-line scripts:** no external dependencies, standard library only
+- **GUI (`gui.py`):** additionally needs a Python built with working
+  Tkinter/Tcl-Tk support (see [GUI](#gui) below)
 
 ---
 
@@ -85,15 +87,34 @@ Claude. The **Convert JSON** tab covers everything the parser scripts do (format
 splitting, tool/hidden/thinking messages); the **Split a file** tab wraps
 `chunker.py` for text files you already have.
 
-The GUI uses tkinter, which is bundled with Python on Windows and macOS. On Linux
-it is sometimes a separate package:
+### Tkinter
+
+The GUI needs Tkinter. Whether you already have it depends on how your Python was
+installed, not just which OS you are on. To check any interpreter:
 
 ```bash
-sudo apt install python3-tk      # Debian/Ubuntu
-sudo dnf install python3-tkinter # Fedora
+python -m tkinter
 ```
 
-The command-line scripts work with or without it.
+That opens a small test window if Tkinter is working. If it fails:
+
+| How Python was installed | What to do |
+| --- | --- |
+| Debian/Ubuntu system Python | `sudo apt install python3-tk` |
+| Fedora system Python | `sudo dnf install python3-tkinter` |
+| python.org installer (macOS/Windows) | Tkinter is bundled; reinstalling Python restores it |
+| pyenv or Homebrew (macOS or Linux) | Install Tk **first**, then rebuild Python |
+
+The pyenv/Homebrew case catches people out: Python links against Tcl-Tk when it
+is compiled, so installing Tk afterwards does not fix an interpreter that was
+already built without it. Install Tk, then rebuild:
+
+```bash
+brew install tcl-tk
+pyenv uninstall 3.11.15 && pyenv install 3.11.15   # use your own version
+```
+
+The command-line scripts work with or without Tkinter.
 
 ---
 
