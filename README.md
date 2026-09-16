@@ -22,6 +22,8 @@ Perfect for:
 ## Features
 
 - Converts ChatGPT and Claude.ai JSON → clean text
+- Rebuilds ChatGPT conversations from a DevTools HAR capture, now that long
+  chats load a page at a time
 - Outputs `.txt` (default) or `.md` via `--format`
 - Preserves conversation order
 - Includes timestamps
@@ -83,9 +85,10 @@ python3 gui.py
 ```
 
 Pick an export file and it works out on its own whether it came from ChatGPT or
-Claude. The **Convert JSON** tab covers everything the parser scripts do (format,
-splitting, tool/hidden/thinking messages); the **Split a file** tab wraps
-`chunker.py` for text files you already have.
+Claude. It accepts ChatGPT `.har` captures as well as `.json` exports. The
+**Convert JSON** tab covers everything the parser scripts do (format, splitting,
+tool/hidden/thinking messages); the **Split a file** tab wraps `chunker.py` for
+text files you already have.
 
 ### Tkinter
 
@@ -154,6 +157,63 @@ python3 chatgpt_export_to_text.py conversations.json --include-tools --include-h
 In ChatGPT: **Settings > Data Controls > Export Data**
 
 You'll receive a ZIP containing your conversations as JSON.
+
+---
+
+## ChatGPT HAR Captures
+
+ChatGPT no longer hands a whole conversation over in one response. The page asks
+for the newest turns, then pages backwards through the rest as you scroll:
+
+```
+/backend-api/conversations/<id>?num_turns=10
+/backend-api/conversations/<id>/messages?before=<cursor>&num_turns=10
+```
+
+So copying one JSON response out of DevTools no longer gets a long chat — you
+only get the last few turns. A data export (above) is still the easiest route and
+is unaffected. When you want a single conversation right now without waiting for
+an export, record the network traffic instead:
+
+1. Open the conversation, then DevTools → **Network**
+2. Tick **Preserve log**
+3. Reload, and **scroll all the way up** so the browser fetches every page
+4. Right-click the request list → **Save all as HAR with content**
+
+Then:
+
+```bash
+python3 chatgpt_har_to_text.py chatgpt.com.har                 # → chatgpt.com.txt
+python3 chatgpt_har_to_text.py capture.har -o thread.md --format md
+python3 chatgpt_har_to_text.py capture.har --chunk-size 500
+python3 chatgpt_har_to_text.py capture.har --include-tools --include-hidden
+```
+
+Output is identical to converting the same conversation from a data export — the
+HAR is stitched back into the export's own format and handed to the same
+converter. `gui.py` accepts `.har` files too.
+
+Useful extras:
+
+```bash
+python3 chatgpt_har_to_text.py capture.har --json rebuilt.json   # save the rebuilt export JSON
+python3 chatgpt_har_to_text.py capture.har --all-branches        # include edits/regenerations
+python3 chatgpt_har_to_text.py capture.har --inspect             # describe the HAR, print no content
+```
+
+`--all-branches` matters if the result looks short. Editing a message or hitting
+regenerate leaves the old version hanging off the conversation tree; by default
+only the thread you actually see is exported, and `--all-branches` includes
+everything.
+
+`--inspect` reports the endpoints, response keys and record counts without
+printing any conversation text, titles or IDs. If ChatGPT changes the format
+again, that output is safe to share and is the fastest way to see what moved.
+
+> **Keep your HAR private.** It contains the conversation text and can contain
+> session identifiers or auth headers. Nothing here uploads it anywhere, and
+> `*.har` is in `.gitignore` so it cannot be committed by accident. Delete it
+> when you are done.
 
 ---
 

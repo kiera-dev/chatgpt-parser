@@ -216,3 +216,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Network captures. A HAR holds the conversation text and can hold session
+# identifiers or auth headers -- never commit one.
+*.har

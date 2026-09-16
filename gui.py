@@ -10,11 +10,13 @@ import contextlib
 import io
 import json
 import queue
+import tempfile
 import threading
 import traceback
 from pathlib import Path
 
 import chatgpt_export_to_text as chatgpt_export
+import chatgpt_har_to_text as chatgpt_har
 import chatgpt_json_to_text as chatgpt_single
 import chunker
 import claude_export_to_text as claude_export
@@ -50,6 +52,9 @@ def sniff_platform(path, limit=65536):
     instead of parsing the whole document -- cheap enough to call on the UI
     thread. Returns 'chatgpt', 'claude', or None if the prefix is inconclusive.
     """
+    if Path(path).suffix.lower() == ".har":
+        return "chatgpt"  # HAR captures only come from ChatGPT
+
     try:
         with open(path, "r", encoding="utf-8", errors="replace") as handle:
             head = handle.read(limit)
@@ -119,53 +124,75 @@ def resolve_output(output, data, platform, input_path, ext):
 
 def run_conversion(input_path, platform=None, output=None, fmt="txt", chunk_size=200,
                    include_tools=False, include_hidden=False, include_thinking=False):
-    """Convert an export. Returns whatever the underlying script printed.
+    """Convert an export or a HAR capture. Returns what the script printed.
 
     Called on a worker thread, so detection and parsing here are free to be
     slow. Pass platform=None to detect it.
     """
-    data = json.loads(Path(input_path).read_text(encoding="utf-8"), strict=False)
+    source = Path(input_path)
+    named_after = Path(input_path)   # output names follow the file the user picked
+    rebuilt = None
+    preamble = ""
 
-    if platform is None:
-        platform = detect_platform(input_path)
+    if source.suffix.lower() == ".har":
+        # ChatGPT pages long conversations in now, so a HAR holds the whole
+        # thing across many responses. Stitch it back together, then carry on
+        # exactly as if it had come from a data export.
+        conversation, note = chatgpt_har.reconstruct(input_path)
+        handle = tempfile.NamedTemporaryFile("w", suffix=".json", delete=False, encoding="utf-8")
+        with handle:
+            json.dump(conversation, handle)
+        rebuilt = Path(handle.name)
+        source = rebuilt
+        platform = "chatgpt"
+        preamble = note + "\n"
+
+    try:
+        data = json.loads(source.read_text(encoding="utf-8"), strict=False)
+
         if platform is None:
-            raise ValueError(
-                "Couldn't tell whether this is a ChatGPT or Claude export. "
-                "Choose one under Service and try again."
-            )
+            platform = detect_platform(source)
+            if platform is None:
+                raise ValueError(
+                    "Couldn't tell whether this is a ChatGPT or Claude export. "
+                    "Choose one under Service and try again."
+                )
 
-    ext = f".{fmt}"
-    is_chatgpt = platform == "chatgpt"
-    buffer = io.StringIO()
+        ext = f".{fmt}"
+        is_chatgpt = platform == "chatgpt"
+        buffer = io.StringIO()
 
-    if is_bulk_export(data):
-        module = chatgpt_export if is_chatgpt else claude_export
-        kwargs = {
-            "input_path": input_path,
-            "output": output or None,
-            "chunk_size": chunk_size,
-            "include_tools": include_tools,
-            "ext": ext,
-        }
-    else:
-        # The export scripts ignore chunk_size for a lone conversation; the
-        # single-conversation scripts honour it, so route there instead.
-        module = chatgpt_single if is_chatgpt else claude_single
-        kwargs = {
-            "input_path": input_path,
-            "output_path": resolve_output(output, data, platform, input_path, ext),
-            "chunk_size": chunk_size,
-            "include_tools": include_tools,
-        }
+        if is_bulk_export(data):
+            module = chatgpt_export if is_chatgpt else claude_export
+            kwargs = {
+                "input_path": str(source),
+                "output": output or None,
+                "chunk_size": chunk_size,
+                "include_tools": include_tools,
+                "ext": ext,
+            }
+        else:
+            # The export scripts ignore chunk_size for a lone conversation; the
+            # single-conversation scripts honour it, so route there instead.
+            module = chatgpt_single if is_chatgpt else claude_single
+            kwargs = {
+                "input_path": str(source),
+                "output_path": resolve_output(output, data, platform, named_after, ext),
+                "chunk_size": chunk_size,
+                "include_tools": include_tools,
+            }
 
-    if is_chatgpt:
-        kwargs["include_hidden"] = include_hidden
-    else:
-        kwargs["include_thinking"] = include_thinking
+        if is_chatgpt:
+            kwargs["include_hidden"] = include_hidden
+        else:
+            kwargs["include_thinking"] = include_thinking
 
-    with contextlib.redirect_stdout(buffer):
-        module.convert(**kwargs)
-    return buffer.getvalue()
+        with contextlib.redirect_stdout(buffer):
+            module.convert(**kwargs)
+        return preamble + buffer.getvalue()
+    finally:
+        if rebuilt is not None:
+            rebuilt.unlink(missing_ok=True)
 
 
 def run_chunker(input_path, mode="lines", size=500, header_level=2, output=None, fmt=None):
@@ -232,7 +259,7 @@ class ParserGUI:
         self.hidden_var = tk.BooleanVar(value=False)
         self.thinking_var = tk.BooleanVar(value=False)
 
-        ttk.Label(parent, text="Export JSON:").grid(row=0, column=0, sticky="w", pady=4)
+        ttk.Label(parent, text="Export or HAR:").grid(row=0, column=0, sticky="w", pady=4)
         ttk.Entry(parent, textvariable=self.input_var).grid(row=0, column=1, sticky="ew", padx=6)
         ttk.Button(parent, text="Browse...", command=self._pick_input).grid(row=0, column=2)
 
@@ -293,8 +320,11 @@ class ParserGUI:
 
     def _pick_input(self):
         path = filedialog.askopenfilename(
-            title="Choose an exported conversation JSON",
-            filetypes=[("JSON files", "*.json"), ("All files", "*.*")])
+            title="Choose an exported conversation JSON or a HAR capture",
+            filetypes=[("Exports and captures", "*.json *.har"),
+                       ("JSON files", "*.json"),
+                       ("HAR captures", "*.har"),
+                       ("All files", "*.*")])
         if not path:
             return
         self.input_var.set(path)
